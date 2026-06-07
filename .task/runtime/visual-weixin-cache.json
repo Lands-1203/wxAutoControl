@@ -1,0 +1,180 @@
+{
+  "VisualWeixinWindow:1000x700": {
+    "search.input": [
+      172,
+      54
+    ],
+    "main.add_menu_button": [
+      275,
+      56
+    ]
+  },
+  "VisualWeixinWindow": {
+    "search.input": {
+      "ratio": [
+        0.172,
+        0.077143
+      ],
+      "basis": [
+        1000,
+        700
+      ]
+    },
+    "main.add_menu_button": {
+      "ratio": [
+        0.275,
+        0.08
+      ],
+      "basis": [
+        1000,
+        700
+      ]
+    }
+  },
+  "VisualSearchPopup:368x464": {
+    "search.network_entry": [
+      196,
+      343
+    ]
+  },
+  "VisualSearchPopup": {
+    "search.network_entry": {
+      "ratio": [
+        0.532609,
+        0.739224
+      ],
+      "basis": [
+        368,
+        464
+      ]
+    }
+  },
+  "VisualAddMenuPopup:164x164": {
+    "menu.add_friend_entry": [
+      70,
+      82
+    ]
+  },
+  "VisualAddMenuPopup": {
+    "menu.add_friend_entry": {
+      "ratio": [
+        0.426829,
+        0.5
+      ],
+      "basis": [
+        164,
+        164
+      ]
+    }
+  },
+  "VisualAddFriendSearchWindow:344x462": {
+    "menu_search.input": [
+      162,
+      76
+    ],
+    "menu_search.button": [
+      269,
+      78
+    ]
+  },
+  "VisualAddFriendSearchWindow": {
+    "menu_search.input": {
+      "ratio": [
+        0.47093,
+        0.164502
+      ],
+      "basis": [
+        344,
+        462
+      ]
+    },
+    "menu_search.button": {
+      "ratio": [
+        0.781977,
+        0.168831
+      ],
+      "basis": [
+        344,
+        462
+      ]
+    }
+  },
+  "VisualAddFriendWindow:344x462": {
+    "add_friend.add_to_contacts": [
+      159,
+      285
+    ]
+  },
+  "VisualAddFriendWindow": {
+    "add_friend.add_to_contacts": {
+      "ratio": [
+        0.462209,
+        0.616883
+      ],
+      "basis": [
+        344,
+        462
+      ]
+    }
+  },
+  "VisualFriendRequestWindow:376x668": {
+    "request.verify_msg_input": [
+      75,
+      80
+    ],
+    "request.remark_input": [
+      82,
+      228
+    ],
+    "request.permission:聊天、朋友圈、微信运动等": [
+      119,
+      395
+    ],
+    "request.confirm_button": [
+      129,
+      627
+    ]
+  },
+  "VisualFriendRequestWindow": {
+    "request.verify_msg_input": {
+      "ratio": [
+        0.199468,
+        0.11976
+      ],
+      "basis": [
+        376,
+        668
+      ]
+    },
+    "request.remark_input": {
+      "ratio": [
+        0.218085,
+        0.341317
+      ],
+      "basis": [
+        376,
+        668
+      ]
+    },
+    "request.permission:聊天、朋友圈、微信运动等": {
+      "ratio": [
+        0.316489,
+        0.591317
+      ],
+      "basis": [
+        376,
+        668
+      ]
+    },
+    "request.confirm_button": {
+      "ratio": [
+        0.343085,
+        0.938623
+      ],
+      "basis": [
+        376,
+        668
+      ]
+    }
+  }
+}
