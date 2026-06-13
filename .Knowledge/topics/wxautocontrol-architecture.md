@@ -54,6 +54,10 @@
 - 本主题不替代具体业务实现细节排查；若用户问某个 UI 状态、按钮定位或脚本失败原因，需要继续下钻业务代码。
 - 本主题不用于 Flow2Spec 技能路由、`.task/` 追踪规则或 `req-docs` 技术方案实现，这些应走各自已有 topic。
 
+## 子主题
+
+- **[操作完成判定机制](wxautocontrol-completion-detection.md)**：详述缓存模式下如何判断操作完成、窗口状态检测、宽松成功判定等实现细节
+
 ## 关联文档
 
 - [wxAutoControl 架构说明终稿](../stock-docs/wxAutoControl_架构说明_终稿.md)
