@@ -82,9 +82,10 @@ class VisualWeixinWindow:
     remains the same.
     """
 
+    _shared_ocr: RapidOCR | None = None
+
     def __init__(self, hwnd: int):
         self.hwnd = hwnd
-        self._ocr: RapidOCR | None = None
         self._logged_first_screenshot = False
         self._logged_first_ocr_call = False
 
@@ -424,14 +425,14 @@ class VisualWeixinWindow:
         return img
 
     def _get_ocr(self) -> RapidOCR:
-        if self._ocr is None:
+        if VisualWeixinWindow._shared_ocr is None:
             started = time.perf_counter()
             log.debug("VisualWeixinWindow._get_ocr init start")
-            self._ocr = RapidOCR()
+            VisualWeixinWindow._shared_ocr = RapidOCR()
             log.debug(
                 f"VisualWeixinWindow._get_ocr init done cost={time.perf_counter() - started:.3f}s"
             )
-        return self._ocr
+        return VisualWeixinWindow._shared_ocr
 
     def ocr_texts(self, image=None) -> list[OCRTextBox]:
         if image is None:
@@ -461,15 +462,28 @@ class VisualWeixinWindow:
             )
         return boxes
 
-    def find_text_box(self, target: str, image=None, exact: bool = False) -> OCRTextBox | None:
+    @staticmethod
+    def _find_text_box_in_boxes(
+        target: str,
+        boxes: Iterable[OCRTextBox],
+        *,
+        exact: bool = False,
+    ) -> OCRTextBox | None:
         best: OCRTextBox | None = None
-        for box in self.ocr_texts(image=image):
+        for box in boxes:
             matched = box.text == target if exact else target in box.text
             if not matched:
                 continue
             if best is None or box.score > best.score:
                 best = box
         return best
+
+    def find_text_box(self, target: str, image=None, exact: bool = False) -> OCRTextBox | None:
+        return self._find_text_box_in_boxes(
+            target,
+            self.ocr_texts(image=image),
+            exact=exact,
+        )
 
     def read_search_text(self) -> str:
         boxes = self._search_text_boxes()
@@ -963,11 +977,37 @@ class VisualWeixinWindow:
     ) -> str:
         self.click(*focus_point, settle=0.1)
         self.select_all(settle=0.1)
-        self.paste_text("", settle=0.1)
         self.backspace(settle=0.1)
         self.delete(settle=0.1)
         self._save_debug_image(debug_dir, f"search-clear-shortcut-{attempt}.png")
         return self.read_search_text()
+
+    def _set_search_text_fast(
+        self,
+        text: str,
+        *,
+        debug_dir: str | Path | None = None,
+    ) -> bool:
+        bounds = self._search_region_box()
+        focus_point = self._get_cached_point_in_bounds(
+            "search.input",
+            bounds,
+            pad_x=self._scaled_x(6),
+            pad_y=self._scaled_y(6),
+        )
+        if focus_point is None:
+            return False
+        log.debug(
+            "开始执行极速搜索写入 "
+            f"目标文本={text!r} 聚焦点={focus_point}"
+        )
+        self.click(*focus_point, settle=0.05)
+        self.select_all(settle=0.04)
+        self.backspace(settle=0.04)
+        self.delete(settle=0.04)
+        self.paste_text(text, settle=0.08)
+        self._save_debug_image(debug_dir, "search-fast-after-paste.png")
+        return True
 
     def set_search_text(
         self,
@@ -1246,14 +1286,47 @@ class VisualWeixinWindow:
         )
         return box
 
-    def locate_chat_input(self, image=None) -> tuple[int, int]:
+    def locate_chat_input(self, image=None, prefer_cache: bool = True) -> tuple[int, int]:
+        cached = self._get_cached_point_in_bounds(
+            "chat.input",
+            self._chat_input_region_box(),
+            pad_x=self._scaled_x(8),
+            pad_y=self._scaled_y(8),
+        )
+        if prefer_cache and cached is not None:
+            self._log_point_source("chat.input", "cache", cached)
+            return cached
         box = self.find_chat_input_box(image=image)
         point = (
             int(box.left + box.width * 0.18),
             int(box.top + box.height * 0.42),
         )
+        self._set_cached_point("chat.input", point)
         self._log_point_source("chat.input", "ocr/heuristic", point)
         return point
+
+    def send_message_to_current_session(
+        self,
+        msg: str,
+        *,
+        clear: bool = True,
+        settle: float = 0.35,
+        debug_dir: str | Path | None = None,
+    ) -> str:
+        self.activate()
+        self.normalize_main_window()
+        input_point = self.locate_chat_input(prefer_cache=True)
+        self.click(*input_point, settle=0.08)
+        self.double_click(*input_point, settle=0.08)
+        if clear:
+            self.select_all(settle=0.05)
+            self.backspace(settle=0.05)
+            self.delete(settle=0.05)
+        self.paste_text(msg, settle=0.10)
+        self.press_enter(settle=max(0.16, min(0.22, settle)))
+        if debug_dir:
+            self.screenshot(Path(debug_dir) / "send-msg-current-after-enter.png")
+        return "sent"
 
     def send_message_to_session(
         self,
@@ -1269,14 +1342,46 @@ class VisualWeixinWindow:
             "VisualWeixinWindow.send_message_to_session "
             f"start who={who!r} exact={exact} window_mode=fixed:{_FIXED_MAIN_WINDOW_WIDTH}x{_FIXED_MAIN_WINDOW_HEIGHT}"
         )
+        popup_timeout = min(0.45, max(0.25, settle + 0.1))
+        miss_sleep = min(0.12, max(0.06, settle * 0.3))
+        popup_click_settle = min(0.28, max(0.18, settle))
+        post_click_settle = min(0.18, max(0.10, settle * 0.5))
+        used_contact_cache = False
+        has_contact_cache = VisualSearchPopup.has_cached_contact_entry(who)
         self.activate()
         self.normalize_main_window()
-        self.switch_to_chat_tab(settle=0.30)
-        if not self.set_search_text(who, retries=retries, settle=0.25, debug_dir=debug_dir):
+        if has_contact_cache:
+            self.click(int(self.rect.width * 0.035), int(self.rect.height * 0.175), settle=0.10)
+            search_ok = self._set_search_text_fast(who, debug_dir=debug_dir)
+            if not search_ok:
+                log.debug("极速搜索写入未命中缓存，回退标准搜索链路")
+                self.switch_to_chat_tab(settle=0.18)
+                search_ok = self.set_search_text(who, retries=retries, settle=0.16, debug_dir=debug_dir)
+        else:
+            self.switch_to_chat_tab(settle=0.18)
+            search_ok = self.set_search_text(who, retries=retries, settle=0.16, debug_dir=debug_dir)
+        if not search_ok:
             return "search_input_failed"
         for attempt in range(1, retries + 1):
-            popup = VisualSearchPopup.find(timeout=0.8)
-            entry = popup.find_session_entry(query=who, exact=exact) if popup is not None else None
+            popup = VisualSearchPopup.find(timeout=popup_timeout)
+            cached_hit = popup.locate_cached_contact_entry(who) if popup is not None else None
+            if popup is not None and cached_hit is not None:
+                log.debug(
+                    "VisualWeixinWindow.send_message_to_session "
+                    f"attempt={attempt} source=contact-cache action=enter point={cached_hit!r}"
+                )
+                used_contact_cache = True
+                self.press_enter(settle=popup_click_settle)
+                time.sleep(post_click_settle)
+                if VisualSearchPopup.find(timeout=0.08) is None:
+                    break
+                log.debug(
+                    "VisualWeixinWindow.send_message_to_session "
+                    f"attempt={attempt} source=contact-cache result=popup-still-open fallback=ocr"
+                )
+                used_contact_cache = False
+                popup.clear_cached_contact_entry(who)
+            entry = popup.find_contact_entry(query=who, exact=exact) if popup is not None else None
             log.debug(
                 "VisualWeixinWindow.send_message_to_session "
                 f"attempt={attempt} popup_found={popup is not None} entry={entry!r}"
@@ -1284,21 +1389,22 @@ class VisualWeixinWindow:
             if popup is not None and debug_dir:
                 popup.screenshot(Path(debug_dir) / f"send-msg-popup-{attempt}.png")
             if entry is not None:
-                popup.click_ocr_box(entry, settle=max(settle, 0.5))
+                popup.remember_contact_entry(who, entry.center)
+                popup.click_ocr_box(entry, settle=popup_click_settle)
                 break
-            time.sleep(0.25)
+            time.sleep(miss_sleep)
         else:
             return "session_not_found"
-        time.sleep(0.35)
-        input_point = self.locate_chat_input()
-        self.click(*input_point, settle=0.12)
-        self.double_click(*input_point, settle=0.12)
+        time.sleep(post_click_settle)
+        input_point = self.locate_chat_input(prefer_cache=True)
+        self.click(*input_point, settle=0.08)
+        self.double_click(*input_point, settle=0.08)
         if clear:
-            self.select_all(settle=0.08)
-            self.backspace(settle=0.08)
-            self.delete(settle=0.08)
-        self.paste_text(msg, settle=0.18)
-        self.press_enter(settle=max(settle, 0.3))
+            self.select_all(settle=0.05)
+            self.backspace(settle=0.05)
+            self.delete(settle=0.05)
+        self.paste_text(msg, settle=0.10)
+        self.press_enter(settle=max(0.16, min(0.22, settle)))
         if debug_dir:
             self.screenshot(Path(debug_dir) / "send-msg-after-enter.png")
         return "sent"
@@ -1309,6 +1415,48 @@ class VisualSearchPopup(VisualWeixinWindow):
 
     WINDOW_CLASS = "Qt51514QWindowToolSaveBits"
     WINDOW_TITLE = "Weixin"
+    _SECTION_HEADER_TEXTS = (
+        "联系人",
+        "群聊",
+        "聊天记录",
+        "公众号",
+        "小程序",
+        "服务号",
+        "订阅号",
+    )
+    _NEGATIVE_SECTION_HEADERS = (
+        "聊天记录",
+        "公众号",
+        "小程序",
+        "服务号",
+        "订阅号",
+    )
+    _POSITIVE_SECTION_HEADERS = (
+        "联系人",
+        "群聊",
+    )
+
+    def _contact_cache_step(self, query: str) -> str:
+        normalized = self._normalize_for_match(query)
+        return f"search.contact_entry:{normalized}"
+
+    @classmethod
+    def has_cached_contact_entry(cls, query: str) -> bool:
+        normalized = cls._normalize_for_match(query)
+        step = f"search.contact_entry:{normalized}"
+        data = cls._load_visual_cache()
+        for scope_key in (cls.__name__,):
+            scope = data.get(scope_key, {})
+            if step in scope:
+                return True
+        for scope_key, scope in data.items():
+            if not isinstance(scope, dict):
+                continue
+            if not str(scope_key).startswith(f"{cls.__name__}:"):
+                continue
+            if step in scope:
+                return True
+        return False
 
     @classmethod
     def find(cls, timeout: float = 2.0) -> "VisualSearchPopup | None":
@@ -1332,6 +1480,134 @@ class VisualSearchPopup(VisualWeixinWindow):
                 continue
             if best is None or box.score > best.score:
                 best = box
+        return best
+
+    def remember_contact_entry(self, query: str, point: tuple[int, int]) -> None:
+        self._set_cached_point(self._contact_cache_step(query), point)
+
+    def clear_cached_contact_entry(self, query: str) -> None:
+        self._clear_cached_point(self._contact_cache_step(query))
+
+    def locate_cached_contact_entry(self, query: str) -> tuple[int, int] | None:
+        return self._get_cached_point_in_bounds(
+            self._contact_cache_step(query),
+            (0, 0, self.rect.width - 1, self.rect.height - 1),
+            pad_x=self._scaled_x(8),
+            pad_y=self._scaled_y(8),
+        )
+
+    def _find_section_header_box(
+        self,
+        header_text: str,
+        *,
+        boxes: Iterable[OCRTextBox],
+    ) -> OCRTextBox | None:
+        return self._find_text_box_in_boxes(header_text, boxes, exact=False)
+
+    def _find_section_headers(
+        self,
+        boxes: list[OCRTextBox],
+    ) -> list[tuple[str, OCRTextBox]]:
+        headers: list[tuple[str, OCRTextBox]] = []
+        for header_text in self._SECTION_HEADER_TEXTS:
+            header = self._find_section_header_box(header_text, boxes=boxes)
+            if header is not None:
+                headers.append((header_text, header))
+        headers.sort(key=lambda item: item[1].top)
+        return headers
+
+    def _contact_section_bounds(self, boxes: list[OCRTextBox]) -> tuple[int, int] | None:
+        contact_header = self._find_section_header_box("联系人", boxes=boxes)
+        if contact_header is None:
+            return None
+        next_top = self.rect.height
+        for header_text, header in self._find_section_headers(boxes):
+            if header_text == "联系人" or header.top <= contact_header.top:
+                continue
+            next_top = min(next_top, header.top)
+        top = max(contact_header.bottom - self._scaled_y(4), 0)
+        bottom = max(top, next_top - self._scaled_y(4))
+        return top, bottom
+
+    def _section_bounds(
+        self,
+        header_name: str,
+        headers: list[tuple[str, OCRTextBox]],
+    ) -> tuple[int, int] | None:
+        current_header: OCRTextBox | None = None
+        next_top = self.rect.height
+        for current_name, header in headers:
+            if current_name == header_name:
+                current_header = header
+                continue
+            if current_header is not None and header.top > current_header.top:
+                next_top = min(next_top, header.top)
+                break
+        if current_header is None:
+            return None
+        top = max(current_header.bottom - self._scaled_y(4), 0)
+        bottom = max(top, next_top - self._scaled_y(4))
+        return top, bottom
+
+    def _section_name_for_box(
+        self,
+        box: OCRTextBox,
+        headers: list[tuple[str, OCRTextBox]],
+    ) -> str | None:
+        current: str | None = None
+        for header_text, header in headers:
+            if box.top >= header.top:
+                current = header_text
+                continue
+            break
+        return current
+
+    def find_contact_entry(
+        self,
+        query: str,
+        image=None,
+        exact: bool = False,
+    ) -> OCRTextBox | None:
+        image = image or self.screenshot()
+        boxes = self.ocr_texts(image=image)
+        headers = self._find_section_headers(boxes)
+        allowed_bounds = {
+            name: self._section_bounds(name, headers)
+            for name in self._POSITIVE_SECTION_HEADERS
+        }
+        query_norm = self._normalize_for_match(query)
+        best: OCRTextBox | None = None
+        header_norms = {self._normalize_for_match(text) for text in self._SECTION_HEADER_TEXTS}
+        for box in boxes:
+            normalized = self._normalize_for_match(box.text)
+            if not normalized:
+                continue
+            if normalized in header_norms:
+                continue
+            if self._contains_any_prefix(
+                normalized,
+                ("网络查找手机/QQ号", "网络查找手机号/QQ号", "网络查找手机/QQ", "网络查找"),
+            ):
+                continue
+            matched = normalized == query_norm if exact else query_norm in normalized
+            if not matched:
+                continue
+            section_name = self._section_name_for_box(box, headers)
+            if section_name not in self._POSITIVE_SECTION_HEADERS:
+                continue
+            bounds = allowed_bounds.get(section_name)
+            if bounds is None:
+                continue
+            top, bottom = bounds
+            if box.bottom < top or box.top > bottom:
+                continue
+            if best is None or box.score > best.score:
+                best = box
+        if best is None:
+            log.debug(
+                "VisualSearchPopup.find_contact_entry "
+                f"query={query!r} headers={[name for name, _ in headers]!r} allowed_bounds={allowed_bounds!r}"
+            )
         return best
 
     def locate_network_entry(
@@ -1491,11 +1767,65 @@ class VisualAddFriendWindow(VisualWeixinWindow):
             return False
         if self.find_text_box("添加到通讯录", image=image, exact=False) is not None:
             return True
+        if self.find_text_box("发消息", image=image, exact=False) is not None:
+            return True
+        if self.find_text_box("发送消息", image=image, exact=False) is not None:
+            return True
+        if self.find_text_box("等待验证", image=image, exact=False) is not None:
+            return True
+        if self.find_text_box("账号异常", image=image, exact=False) is not None:
+            return True
+        if self.find_text_box("联系人较多", image=image, exact=False) is not None:
+            return True
+        if self.find_text_box("地区", image=image, exact=False) is not None:
+            return True
+        if self.find_text_box("昵称", image=image, exact=False) is not None:
+            return True
         if self.find_text_box("没有昵称", image=image, exact=False) is not None:
             return True
         if self.find_text_box("添加朋友申请", image=image, exact=False) is not None:
             return True
         return True
+
+    def _debug_ocr_summary(self, image=None, limit: int = 12) -> str:
+        image = image or self.screenshot()
+        texts: list[str] = []
+        seen: set[str] = set()
+        for box in self.ocr_texts(image=image):
+            normalized = self._normalize_text(box.text)
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            texts.append(normalized)
+            if len(texts) >= limit:
+                break
+        return " | ".join(texts)
+
+    def has_profile_like_layout(self, image=None) -> bool:
+        image = image or self.screenshot()
+        if self.has_not_found_marker(image=image):
+            return False
+        if self.has_search_form_header(image=image):
+            return True
+        profile_markers = (
+            "添加到通讯录",
+            "发消息",
+            "发送消息",
+            "等待验证",
+            "地区",
+            "昵称",
+            "微信号",
+            "手机号",
+            "账号异常",
+            "联系人较多",
+        )
+        hit_count = 0
+        for marker in profile_markers:
+            if self.find_text_box(marker, image=image, exact=False) is not None:
+                hit_count += 1
+            if hit_count >= 2:
+                return True
+        return False
 
     def _add_button_bounds(self) -> tuple[int, int, int, int]:
         rect = self.rect
@@ -1618,6 +1948,16 @@ class VisualAddFriendWindow(VisualWeixinWindow):
             return "not_found"
         if self.has_inline_search_result_layout(image=image):
             return "found"
+        if self.has_profile_like_layout(image=image):
+            log.debug(
+                "VisualAddFriendWindow.detect_result_state "
+                f"fallback=profile-like-layout ocr={self._debug_ocr_summary(image=image)}"
+            )
+            return "found"
+        log.debug(
+            "VisualAddFriendWindow.detect_result_state "
+            f"fallback=unknown ocr={self._debug_ocr_summary(image=image)}"
+        )
         return "unknown"
 
     def click_add_to_contacts(self, settle: float = 0.8) -> bool:
@@ -1678,11 +2018,6 @@ class VisualAddFriendWindow(VisualWeixinWindow):
         return "unknown"
 
     def infer_post_submit_success(self, submit_ok: bool, timeout: float = 4.0) -> str:
-        """Classify post-submit outcome.
-
-        Success requires an explicit post-submit signal. A sent click alone is
-        not enough to classify the request as applied.
-        """
         post_state = self.detect_post_apply_state(timeout=timeout)
         if post_state in {"rate_limited", "permission_required"}:
             return post_state
@@ -1691,8 +2026,9 @@ class VisualAddFriendWindow(VisualWeixinWindow):
         if submit_ok:
             log.debug(
                 "VisualAddFriendWindow.infer_post_submit_success "
-                f"submit_ok={submit_ok} post_state={post_state} -> keep-observed-state"
+                f"submit_ok={submit_ok} post_state={post_state} -> optimistic-applied"
             )
+            return "applied"
         return post_state
 
     def ensure_open(self) -> "VisualAddFriendWindow":
@@ -1821,7 +2157,11 @@ class VisualAddFriendSearchWindow(VisualWeixinWindow):
                 return False
             self.click(*button_point, settle=max(0.35, settle))
             add_wnd = VisualAddFriendWindow.find(timeout=max(1.2, settle + 0.8))
-            if add_wnd is not None:
+            if self._is_search_result_ready(add_wnd, phone):
+                return True
+            self.press_enter(settle=max(0.35, settle))
+            add_wnd = VisualAddFriendWindow.find(timeout=max(1.0, settle + 0.6))
+            if self._is_search_result_ready(add_wnd, phone):
                 return True
             image = self.screenshot()
             input_point = self.locate_search_input(image=image, prefer_cache=False)
@@ -1834,7 +2174,11 @@ class VisualAddFriendSearchWindow(VisualWeixinWindow):
                 return False
             self.click(*button_point, settle=max(0.35, settle))
             add_wnd = VisualAddFriendWindow.find(timeout=max(1.2, settle + 0.8))
-            if add_wnd is not None:
+            if self._is_search_result_ready(add_wnd, phone):
+                return True
+            self.press_enter(settle=max(0.35, settle))
+            add_wnd = VisualAddFriendWindow.find(timeout=max(1.0, settle + 0.6))
+            if self._is_search_result_ready(add_wnd, phone):
                 return True
             current = self.find_text_box(phone, image=self.screenshot(), exact=False)
             log.debug(
@@ -1843,6 +2187,24 @@ class VisualAddFriendSearchWindow(VisualWeixinWindow):
             )
             time.sleep(0.2)
         return False
+
+    def _is_search_result_ready(
+        self,
+        add_wnd: "VisualAddFriendWindow | None",
+        phone: str,
+    ) -> bool:
+        if add_wnd is None:
+            return False
+        image = add_wnd.screenshot()
+        if add_wnd.has_search_form_header(image=image):
+            result_state = add_wnd.detect_result_state(image=image)
+            log.debug(
+                "VisualAddFriendSearchWindow._is_search_result_ready "
+                f"header-still-visible phone={phone!r} result_state={result_state!r} "
+                f"ocr={add_wnd._debug_ocr_summary(image=image)}"
+            )
+            return result_state != "unknown"
+        return True
 
 
 class VisualFriendRequestWindow(VisualWeixinWindow):
@@ -2040,8 +2402,8 @@ class VisualFriendRequestWindow(VisualWeixinWindow):
             "VisualFriendRequestWindow._confirm_tag_option_by_keyboard "
             f"tag={tag!r} action='down+enter'"
         )
-        self.press_down(settle=0.08)
-        self.press_enter(settle=0.14)
+        self.press_down(settle=0.25)
+        self.press_enter(settle=0.25)
         return True
 
     def set_verify_message(self, text: str, point: tuple[int, int] | None = None) -> bool:

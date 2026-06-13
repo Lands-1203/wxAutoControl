@@ -24,23 +24,48 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    args = build_parser().parse_args()
-    if args.debug:
-        log.set_debug(True)
-    print("[独立发送消息脚本] 运行参数")
-    print(json.dumps({
-        "who": args.who,
-        "msg": args.msg,
-        "exact": args.exact,
-    }, ensure_ascii=False, indent=2))
-    resp = send_message(
-        who=args.who,
-        msg=args.msg,
-        exact=args.exact,
-    )
-    print("[独立发送消息脚本] 返回结果")
-    print(json.dumps(dict(resp), ensure_ascii=False, indent=2))
-    return 0 if resp.is_success else 2
+    try:
+        args = build_parser().parse_args()
+        if args.debug:
+            log.set_debug(True)
+        print("[独立发送消息脚本] 运行参数")
+        print(json.dumps({
+            "who": args.who,
+            "msg": args.msg,
+            "exact": args.exact,
+        }, ensure_ascii=False, indent=2))
+        resp = send_message(
+            who=args.who,
+            msg=args.msg,
+            exact=args.exact,
+        )
+        print("[独立发送消息脚本] 返回结果")
+        print(json.dumps(dict(resp), ensure_ascii=False, indent=2))
+        return 0 if resp.is_success else 2
+    except KeyboardInterrupt:
+        print("[独立发送消息脚本] 返回结果")
+        print(json.dumps({
+            "status": "error",
+            "message": "用户中断执行",
+            "code": "SEND_MESSAGE_INTERRUPTED",
+            "data": {
+                "status": "interrupted",
+            },
+        }, ensure_ascii=False, indent=2))
+        return 130
+    except Exception as exc:
+        log.error(f"run_send_message unexpected error: {exc}", exc_info=True)
+        print("[独立发送消息脚本] 返回结果")
+        print(json.dumps({
+            "status": "error",
+            "message": f"执行异常: {type(exc).__name__}",
+            "code": "SEND_MESSAGE_EXCEPTION",
+            "data": {
+                "status": "exception",
+                "exception_type": type(exc).__name__,
+            },
+        }, ensure_ascii=False, indent=2))
+        return 2
 
 
 if __name__ == "__main__":

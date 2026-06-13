@@ -1,0 +1,17 @@
+{
+  "includeAny": [
+    "项目架构",
+    "架构说明",
+    "仓库结构",
+    "模块划分",
+    "目录结构",
+    "添加好友架构",
+    "发送消息架构",
+    "视觉自动化",
+    "坐标缓存",
+    "wxautocontrol"
+  ],
+  "id": "m-wxautocontrol-architecture",
+  "version": "1.0.0",
+  "schema": "flow2spec.matcher.v1"
+}

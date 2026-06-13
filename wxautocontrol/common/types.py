@@ -22,20 +22,40 @@ class ControlConfig:
 
 _last_add_friend_ts: float = 0.0
 _add_friend_state_lock: threading.Lock = threading.Lock()
+_last_message_target: str = ""
+_message_state_lock: threading.Lock = threading.Lock()
 
 
 class ControlResponse(dict):
-    def __init__(self, status: str, message: str, data: dict | None = None):
-        super().__init__(status=status, message=message, data=data)
+    def __init__(
+        self,
+        status: str,
+        message: str,
+        code: str,
+        data: dict | None = None,
+    ):
+        super().__init__(status=status, message=message, code=code, data=data)
 
     @property
     def is_success(self) -> bool:
-        return self["status"] == "成功"
+        return self["status"] == "success"
 
     @classmethod
-    def success(cls, message: str | None = None, data: dict | None = None):
-        return cls("成功", message or "", data)
+    def success(
+        cls,
+        message: str | None = None,
+        data: dict | None = None,
+        *,
+        code: str = "SUCCESS",
+    ):
+        return cls("success", message or "", code, data)
 
     @classmethod
-    def failure(cls, message: str, data: dict | None = None):
-        return cls("失败", message, data)
+    def failure(
+        cls,
+        message: str,
+        data: dict | None = None,
+        *,
+        code: str = "ERROR",
+    ):
+        return cls("error", message, code, data)
