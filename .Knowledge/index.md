@@ -29,6 +29,7 @@
 | f2s-task | `.Knowledge/topics/f2s-task.md` | 变更追踪、`.task/` 任务清单与跨会话续作 | 长文：配置根 `rules/f2s-task.*`；Codex：`.codex/topics/f2s-task.md` |
 | f2s-req-plan | `.Knowledge/topics/f2s-req-plan.md` | 需求/方案规划与实现；始终维护 `.task/` | 技能：`skills/f2s-req-plan/SKILL.md`；依赖 `f2s-task` |
 | wxautocontrol-architecture | `.Knowledge/topics/wxautocontrol-architecture.md` | 当前仓库架构、模块分层、视觉自动化链路、常驻 runtime 与运行边界 | stock：[架构说明终稿](.Knowledge/stock-docs/wxAutoControl_架构说明_终稿.md)；[架构说明初稿](.Knowledge/stock-docs/架构说明_初稿.md) |
+| wxautocontrol-completion-detection | `.Knowledge/topics/wxautocontrol-completion-detection.md` | 操作完成判定机制：缓存模式下如何判断操作完成、窗口状态检测、宽松成功判定 | 依赖：`wxautocontrol-architecture` |
 
 每主题保留 **1–3 条** 可点击摘要链接；全量路径对照写入 `.Knowledge/migration-report.md`（迁移场景）。  
 其中 **`implement-tech-design`**、**`f2s-doc-routing`**、**`config-precheck`**、**`f2s-task`** 在 `topics/` 内为**路由摘要**；执行长文见配置根 **`rules/f2s-*.md(c)`**；使用 Codex 时见 **`.codex/AGENTS.md`**、**`.codex/topics/f2s-*.md`**（`f2s-config-check` 与 `AGENTS` 前置同源，按需打开）。**`f2s-knowledge-preflight`** 与 **`f2s-kb-feedback-closing`** 是普通问答首读 / 源码补答收口门禁，作为配置根规则 / Codex 专题长文生效，不写入 `topicPaths` 或 `taskToTopicRules`。

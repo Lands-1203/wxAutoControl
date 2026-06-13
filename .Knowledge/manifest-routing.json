@@ -10,6 +10,9 @@
     ],
     "f2s-req-plan": [
       "f2s-task"
+    ],
+    "wxautocontrol-completion-detection": [
+      "wxautocontrol-architecture"
     ]
   },
   "topicPaths": {
@@ -19,7 +22,8 @@
     "config-precheck": ".Knowledge/topics/f2s-config-precheck.md",
     "f2s-task": ".Knowledge/topics/f2s-task.md",
     "f2s-req-plan": ".Knowledge/topics/f2s-req-plan.md",
-    "wxautocontrol-architecture": ".Knowledge/topics/wxautocontrol-architecture.md"
+    "wxautocontrol-architecture": ".Knowledge/topics/wxautocontrol-architecture.md",
+    "wxautocontrol-completion-detection": ".Knowledge/topics/wxautocontrol-completion-detection.md"
   },
   "taskToTopicRules": [
     {
@@ -70,6 +74,14 @@
       "topics": [
         "wxautocontrol-architecture"
       ]
+    },
+    {
+      "task": "completion-detection",
+      "matcherId": "m-wxautocontrol-completion-detection",
+      "matcherPath": ".Knowledge/matchers/m-wxautocontrol-completion-detection.json",
+      "topics": [
+        "wxautocontrol-completion-detection"
+      ]
     }
   ],
   "topicMetadata": {
@@ -101,6 +113,10 @@
       "confidence": "manual"
     },
     "wxautocontrol-architecture": {
+      "primary": "module",
+      "confidence": "inferred"
+    },
+    "wxautocontrol-completion-detection": {
       "primary": "module",
       "confidence": "inferred"
     }
