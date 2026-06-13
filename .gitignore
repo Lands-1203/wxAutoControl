@@ -1,0 +1,9 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Runtime cache
+.task/runtime/
+
+# Local logs
+wxauto_logs/
